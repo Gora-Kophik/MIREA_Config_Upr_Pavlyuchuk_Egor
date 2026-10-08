@@ -11,4 +11,10 @@ grep -v '^#' /etc/protocols | awk '{print $2, $1}' | sort -rn | head -n 5
 
 <img width="435" height="385" alt="image" src="https://github.com/user-attachments/assets/da13821f-ada9-4fcc-932e-0dbfcd784af1" />
 
-
+# Задание 4
+# Задание 5
+# Задание 6
+# Задание 7
+# Задание 8
+# Задание 9
+# Задание 10
