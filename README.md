@@ -1,8 +1,8 @@
 # MIREA_Config_Upr_Pavlyuchuk_Egor
 Репозиторий для выполнения заданий по конфигурационной практике 
-# Задание 1 
-Для выполнения задания 1 в командную строку Linux необходимо ввести следующую команду:
-grep -v '^#' /etc/passwd | cut -d: -f1 | sort
+# Этап 1 (python)
+  
+
 # Задание 2
 Для выполнения задания 2 в командную строку Linux необходимо ввести следующую команду:
 grep -v '^#' /etc/protocols | awk '{print $2, $1}' | sort -rn | head -n 5
@@ -11,10 +11,4 @@ grep -v '^#' /etc/protocols | awk '{print $2, $1}' | sort -rn | head -n 5
 
 <img width="435" height="385" alt="image" src="https://github.com/user-attachments/assets/da13821f-ada9-4fcc-932e-0dbfcd784af1" />
 
-# Задание 4
-# Задание 5
-# Задание 6
-# Задание 7
-# Задание 8
-# Задание 9
-# Задание 10
+
