@@ -753,5 +753,406 @@ def main():
 if __name__ == "__main__":
     main()
 ```
+# Этап 5
+В данном этапе мы привносим завершающие штрихи в наш эмулятор добавляя более сложные команды для переименовки и поиска директорий и файлов mv и chmod соответственно, для их проверки создадим новый файл со скриптом New_Test.sh. 
+
+В файле New_Test.sh напишем следующее:
+```
+#  Проверяем исходное состояние каталогов
+ls
+cd home
+ls
+
+#  Тестируем команду chmod 
+chmod 777 user
+chmod 0600 user/documents/secret.txt
+
+#  Тестируем команду mv (Перемещение файла в другую директорию)
+mv user/documents/secret.txt /var/log
+cd /var/log
+ls
+wc secret.txt
+```
+
+Основной код в файле main.py изменяем следующим образом: 
+```
+import os
+import sys
+import getpass
+import socket
+import shlex
+import argparse
+import csv
+import hashlib
+import base64
+
+# Глобальные переменные состояния VFS
+VFS_DATA = {}  # {абсолютный_путь: {'type': 'dir'/'file', 'permissions': '0755', 'content': 'base64_str'}}
+VFS_NAME = ""
+VFS_SHA256 = ""
+CURRENT_DIR = "/"  # Текущая директория в VFS
 
 
+def load_vfs(vfs_path):
+    """Загружает VFS из CSV-файла в память, вычисляет SHA-256 и задает дефолтные права."""
+    global VFS_DATA, VFS_NAME, VFS_SHA256
+
+    if not os.path.exists(vfs_path):
+        print(f"Критическая ошибка: Файл VFS '{vfs_path}' не найден.", file=sys.stderr)
+        sys.exit(1)
+
+    VFS_NAME = os.path.basename(vfs_path)
+
+    sha256_hash = hashlib.sha256()
+    try:
+        with open(vfs_path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        VFS_SHA256 = sha256_hash.hexdigest()
+    except Exception as e:
+        print(f"Критическая ошибка при чтении файла VFS: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        with open(vfs_path, mode="r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            if not reader.fieldnames or not all(col in reader.fieldnames for col in ["path", "type", "content"]):
+                print(f"Критическая ошибка: Неверный формат CSV в '{vfs_path}'.", file=sys.stderr)
+                sys.exit(1)
+
+            # Инициализируем корень с правами 0755
+            VFS_DATA["/"] = {"type": "dir", "permissions": "0755", "content": ""}
+
+            for row in reader:
+                path = row["path"].strip()
+                node_type = row["type"].strip()
+                content = row["content"]
+
+                if not path.startswith("/"):
+                    path = "/" + path
+                path = os.path.normpath(path).replace("\\", "/")
+                if path != "/" and path.endswith("/"):
+                    path = path.rstrip("/")
+
+                # Задаем базовые права: 0755 для папок, 0644 для файлов (Этап 5)
+                perms = "0755" if node_type == "dir" else "0644"
+
+                VFS_DATA[path] = {"type": node_type, "permissions": perms, "content": content}
+
+                # Автоматическое заполнение родительских директорий
+                parts = path.split("/")
+                for i in range(1, len(parts)):
+                    parent_path = "/".join(parts[:i + 1])
+                    if not parent_path:
+                        parent_path = "/"
+                    if parent_path not in VFS_DATA:
+                        VFS_DATA[parent_path] = {"type": "dir", "permissions": "0755", "content": ""}
+
+    except Exception as e:
+        print(f"Критическая ошибка парсинга VFS: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def get_prompt():
+    """Формирует приглашение к вводу."""
+    username = getpass.getuser()
+    hostname = socket.gethostname()
+    return f"{username}@{hostname}:{CURRENT_DIR}$ "
+
+
+def resolve_path(target_path):
+    """Преобразует относительный или абсолютный путь в нормализованный абсолютный путь VFS."""
+    global CURRENT_DIR
+    if target_path.startswith("/"):
+        combined = target_path
+    else:
+        if CURRENT_DIR == "/":
+            combined = "/" + target_path
+        else:
+            combined = CURRENT_DIR + "/" + target_path
+
+    normalized = os.path.normpath(combined).replace("\\", "/")
+    if normalized != "/" and normalized.endswith("/"):
+        normalized = normalized.rstrip("/")
+    return normalized
+
+
+def execute_command(user_input):
+    """Обрабатывает и выполняет одну команду (Этап 1-5)."""
+    global CURRENT_DIR, VFS_DATA
+    parsed_input = shlex.split(user_input)
+    if not parsed_input:
+        return True
+
+    command = parsed_input[0]
+    args = parsed_input[1:]
+
+    if command == "exit":
+        if args:
+            print("exit: команда не принимает аргументы", file=sys.stderr)
+            return False
+        print("Завершение работы эмулятора.")
+        return "exit"
+
+    elif command == "vfs-info":
+        if args:
+            print("vfs-info: команда не принимает аргументы", file=sys.stderr)
+            return False
+        print(f"Имя VFS: {VFS_NAME}")
+        print(f"Хеш SHA-256: {VFS_SHA256}")
+        return True
+
+    elif command == "ls":
+        target = CURRENT_DIR
+        if len(args) > 1:
+            print("ls: слишком много аргументов", file=sys.stderr)
+            return False
+        elif len(args) == 1:
+            target = resolve_path(args[0])
+
+        if target not in VFS_DATA:
+            print(f"ls: {args[0]}: No such file or directory", file=sys.stderr)
+            return False
+
+        if VFS_DATA[target]["type"] == "file":
+            print(os.path.basename(target))
+            return True
+
+        items = set()
+        for path in VFS_DATA.keys():
+            if path == target or path == "/":
+                continue
+
+            if target == "/":
+                remainder = path[1:]
+            else:
+                if path.startswith(target + "/"):
+                    remainder = path[len(target) + 1:]
+                else:
+                    continue
+
+            if "/" not in remainder and remainder:
+                items.add(remainder)
+
+        if items:
+            print("  ".join(sorted(items)))
+        return True
+
+    elif command == "cd":
+        if len(args) > 1:
+            print("cd: слишком много аргументов", file=sys.stderr)
+            return False
+
+        target = "/" if len(args) == 0 else resolve_path(args[0])
+
+        if target not in VFS_DATA:
+            print(f"cd: no such file or directory: {args[0]}", file=sys.stderr)
+            return False
+        if VFS_DATA[target]["type"] != "dir":
+            print(f"cd: not a directory: {args[0]}", file=sys.stderr)
+            return False
+
+        CURRENT_DIR = target
+        return True
+
+    elif command == "uname":
+        if len(args) > 1:
+            print("uname: слишком много аргументов", file=sys.stderr)
+            return False
+
+        if len(args) == 1:
+            if args[0] in ["-a", "--all"]:
+                print(f"UNIX-Emulator {socket.gethostname()} 1.0.0-release Python-REPL x86_64")
+            elif args[0] in ["-s", "--kernel-name"]:
+                print("UNIX-Emulator")
+            else:
+                print(f"uname: invalid option: {args[0]}", file=sys.stderr)
+                return False
+        else:
+            print("UNIX-Emulator")
+        return True
+
+    elif command == "wc":
+        if not args:
+            print("wc: пропущен операнд файла", file=sys.stderr)
+            return False
+        if len(args) > 1:
+            print("wc: поддерживается работа только с одним файлом", file=sys.stderr)
+            return False
+
+        target = resolve_path(args[0])
+        if target not in VFS_DATA:
+            print(f"wc: {args[0]}: No such file or directory", file=sys.stderr)
+            return False
+        if VFS_DATA[target]["type"] != "file":
+            print(f"wc: {args[0]}: Is a directory", file=sys.stderr)
+            return False
+
+        try:
+            b64_content = VFS_DATA[target]["content"]
+            raw_bytes = base64.b64decode(b64_content)
+            text_content = raw_bytes.decode('utf-8', errors='replace')
+        except Exception as e:
+            print(f"wc: ошибка чтения файла {args[0]}: {e}", file=sys.stderr)
+            return False
+
+        lines_count = text_content.count('\n')
+        words_count = len(text_content.split())
+        bytes_count = len(raw_bytes)
+
+        print(f"{lines_count} {words_count} {bytes_count} {args[0]}")
+        return True
+
+    elif command == "chmod":
+        # Новая команда chmod 
+        if len(args) != 2:
+            print("chmod: неверное количество аргументов. Использование: chmod <октальный_режим> <путь>",
+                  file=sys.stderr)
+            return False
+
+        mode, target_raw = args[0], args[1]
+
+        # Проверяем, что маска состоит из 3-4 цифр в 8-ричной системе 
+        if not mode.isdigit() or any(c in mode for c in ['8', '9']) or len(mode) not in (3, 4):
+            print(f"chmod: неверный режим доступа: '{mode}'", file=sys.stderr)
+            return False
+
+        target = resolve_path(target_raw)
+        if target not in VFS_DATA:
+            print(f"chmod: {target_raw}: No such file or directory", file=sys.stderr)
+            return False
+
+        # Нормализуем к 4-значному виду (например, 755 -> 0755)
+        norm_mode = mode.zfill(4)
+        VFS_DATA[target]["permissions"] = norm_mode
+        print(f"[Успех] Права для '{target_raw}' изменены на {norm_mode}")
+        return True
+
+    elif command == "mv":
+        # Новая команда mv 
+        if len(args) != 2:
+            print("mv: требуется указать источник и приемник. Использование: mv <источник> <приемник>", file=sys.stderr)
+            return False
+
+        src_raw, dest_raw = args[0], args[1]
+        src = resolve_path(src_raw)
+        dest = resolve_path(dest_raw)
+
+        if src not in VFS_DATA:
+            print(f"mv: cannot stat '{src_raw}': No such file or directory", file=sys.stderr)
+            return False
+
+        if src == "/":
+            print("mv: невозможно переместить корневой каталог", file=sys.stderr)
+            return False
+
+        # Проверяем, существует ли целевой путь и является ли он директорией
+        if dest in VFS_DATA and VFS_DATA[dest]["type"] == "dir":
+            # Если dest — директория, файл перемещается внутрь неё со своим старым именем
+            if dest in VFS_DATA and VFS_DATA[dest]["type"] == "dir":
+                dest = os.path.normpath(os.path.join(dest, os.path.basename(src))).replace("\\", "/")
+
+            # Предотвращаем перемещение папки саму в себя или в свои подпапки
+            if src == dest or dest.startswith(src + "/"):
+                print(f"mv: невозможно переместить директорию '{src_raw}' в саму себя или в поддиректорию",
+                      file=sys.stderr)
+                return False
+
+            
+            to_move = {}
+            for path, node in VFS_DATA.items():
+                if path == src:
+                    to_move[path] = (dest, node)
+                elif path.startswith(src + "/"):
+                    sub_dest = os.path.normpath(path.replace(src, dest, 1)).replace("\\", "/")
+                    to_move[path] = (sub_dest, node)
+
+            # Выполняем перемещение в памяти
+            for old_path in to_move.keys():
+                del VFS_DATA[old_path]
+
+            for old_path, (new_path, node) in to_move.items():
+                VFS_DATA[new_path] = node
+
+            print(f"[Успех] Элемент '{src_raw}' перемещен в '{dest_raw}'")
+            return True
+
+        else:
+            print(f"shell-emulator: command not found: {command}", file=sys.stderr)
+            return False
+
+
+def run_script(script_path):
+    """Выполняет команды из стартового скрипта с имитацией ввода-вывода."""
+    if not os.path.exists(script_path):
+        print(f"Ошибка: Стартовый скрипт '{script_path}' не найден.", file=sys.stderr)
+        return False
+
+    print(f"--- Запуск стартового скрипта: {script_path} ---")
+    try:
+        with open(script_path, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                clean_line = line.strip()
+                if not clean_line or clean_line.startswith("#"):
+                    continue
+
+                prompt = get_prompt()
+                print(f"{prompt}{clean_line}")
+
+                status = execute_command(clean_line)
+                if status == "exit":
+                    return True
+                elif not status:
+                    print(f"shell-emulator: ошибка на строке {line_num} в скрипте '{script_path}'", file=sys.stderr)
+                    print("Выполнение скрипта прервано из-за ошибки.", file=sys.stderr)
+                    return False
+    except Exception as e:
+        print(f"Критическая ошибка при чтении скрипта: {e}", file=sys.stderr)
+        return False
+
+    print("--- Стартовый скрипт успешно выполнен ---\n")
+    return True
+
+    # ПЕРЕД DEF НЕТ ПРОБЕЛОВ - функция находится на верхнем уровне
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Эмулятор UNIX-оболочки (Этап 5 - Финал)")
+    parser.add_argument("--vfs", required=True, help="Путь к CSV-файлу виртуальной файловой системы")
+    parser.add_argument("--script", help="Путь к стартовому скрипту")
+
+    args = parser.parse_args()
+
+    print("===== ОТЛАДОЧНЫЙ ВЫВОД ПАРАМЕТРОВ =====")
+    print(f"Путь к VFS: {args.vfs}")
+    print(f"Стартовый скрипт: {args.script if args.script else 'Не задан'}")
+    print("=======================================\n")
+
+    load_vfs(args.vfs)
+
+    print("Эмулятор UNIX-оболочки запущен. Для выхода введите 'exit'.\n")
+
+    if args.script:
+        run_script(args.script)
+
+    while True:
+        try:
+            prompt = get_prompt()
+            user_input = input(prompt).strip()
+
+            status = execute_command(user_input)
+            if status == "exit":
+                break
+
+        except KeyboardInterrupt:
+            print("\nИспользуйте команду 'exit' для выхода.")
+        except EOFError:
+            print("\nЗавершение работы эмулятора (EOF).")
+            break
+        except Exception as e:
+            print(f"Ошибка выполнения: {e}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
+```
