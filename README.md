@@ -13,9 +13,8 @@
       username = getpass.getuser()
       hostname = socket.gethostname()
       
-      # Получаем текущую директорию
+      
       current_dir = os.getcwd()
-      # Пытаемся заменить домашний каталог пользователя на '~' для схожести с UNIX
       home_dir = os.path.expanduser("~")
       if current_dir.startswith(home_dir):
           current_dir = current_dir.replace(home_dir, "~", 1)
@@ -34,7 +33,6 @@
               if not user_input:
                   continue
                   
-              #  Парсинг строки с учетом кавычек
               parsed_input = shlex.split(user_input)
               command = parsed_input[0]
               args = parsed_input[1:]
@@ -48,7 +46,6 @@
                   break
                   
               elif command in ["ls", "cd"]:
-                  # Команды-заглушки: выводят свое имя и аргументы
                   print(f"[Заглушка] Вызвана команда: {command}")
                   print(f"[Заглушка] Аргументы: {args}")
                   
@@ -151,7 +148,7 @@ def run_script(script_path):
                 if not clean_line or clean_line.startswith("#"):
                     continue
 
-                # Имитируем ввод пользователя 
+                # Имитируем ввод 
                 prompt = get_prompt()
                 print(f"{prompt}{clean_line}")
 
@@ -161,7 +158,6 @@ def run_script(script_path):
                 if status == "exit":
                     return True
                 elif not status:
-                    # Остановка при первой ошибке и вывод сообщения
                     print(f"shell-emulator: ошибка на строке {line_num} в скрипте '{script_path}'", file=sys.stderr)
                     print("Выполнение скрипта прервано из-за ошибки.", file=sys.stderr)
                     return False
@@ -174,14 +170,13 @@ def run_script(script_path):
 
 
 def main():
-    #  Настройка параметров командной строки через argparse
+    #  Настройка параметров командной строки
     parser = argparse.ArgumentParser(description="Эмулятор UNIX-оболочки (Этап 2)")
     parser.add_argument("--vfs", required=True, help="Путь к физическому расположению VFS (архив или папка)")
     parser.add_argument("--script", help="Путь к стартовому скрипту для автоматического выполнения")
 
     args = parser.parse_args()
-
-    # Отладочный вывод всех заданных параметров 
+ 
     print("===== ОТЛАДОЧНЫЙ ВЫВОД ПАРАМЕТРОВ =====")
     print(f"Путь к VFS: {args.vfs}")
     print(f"Стартовый скрипт: {args.script if args.script else 'Не задан'}")
@@ -192,10 +187,7 @@ def main():
     # Если передан стартовый скрипт, сначала запускаем его
     if args.script:
         script_success = run_script(args.script)
-        # Если скрипт завершился с ошибкой, мы можем либо выйти, либо продолжить REPL.
-        # Обычно в оболочках выполнение переходит в интерактивный режим, но мы зафиксировали ошибку.
 
-    # Интерактивный цикл REPL
     while True:
         try:
             prompt = get_prompt()
@@ -218,19 +210,16 @@ if __name__ == "__main__":
     main()
 ```
 # Этап 3
-При выполнении 3-его этапа мы работаем с виртуальной файловой системой VFS, для того, чтобы её имплементировать в наш эмулятор нам необходимо добавить 2 новых файла Test_script.sh который будет содержать скрипт со всеми необходимыми нам проверками и файл vfs.csv содержащий в себе нашу виртуальную файловую систему.
+При выполнении 3-его этапа мы работаем с виртуальной файловой системой VFS, для того, чтобы продемонстрировать её имплементацию в наш эмулятор нам необходимо добавить 2 новых файла Test_script.sh который будет содержать скрипт со всеми необходимыми нам проверками и файл vfs.csv содержащий в себе нашу виртуальную файловую систему.
 
 В файле Test_script.sh напишем следующее:
 ```
-# Тест вывода информации о VFS
 vfs-info
 
-# Тест заглушек ls и cd внутри VFS
 ls
 cd /home/user
 ls -la
 
-# Проверка обработки ошибок 
 vfs-info extra_argument
 ```
 
@@ -261,9 +250,9 @@ import base64
 
 # Глобальные переменные для хранения состояния VFS в памяти
 VFS_DATA = {}  # Словарь: {абсолютный_путь: {'type': 'dir'/'file', 'content': '...'}}
-VFS_NAME = ""  # Имя файла VFS
-VFS_SHA256 = ""  # Хеш SHA-256 файла VFS
-CURRENT_DIR = "/"  # Текущая директория внутри VFS
+VFS_NAME = "" 
+VFS_SHA256 = ""  # Хеш 
+CURRENT_DIR = "/"  
 
 
 def load_vfs(vfs_path):
@@ -276,7 +265,7 @@ def load_vfs(vfs_path):
 
     VFS_NAME = os.path.basename(vfs_path)
 
-    # Пункт 4: Вычисление хеша SHA-256 данных файла
+    # Вычисление хеша 
     sha256_hash = hashlib.sha256()
     try:
         with open(vfs_path, "rb") as f:
@@ -287,18 +276,17 @@ def load_vfs(vfs_path):
         print(f"Критическая ошибка при чтении файла VFS: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Загрузка структуры CSV в память
+    # Загрузка CSV в память
     try:
         with open(vfs_path, mode="r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
 
-            # Проверка обязательных колонок (Пункт 3: неверный формат)
             if not reader.fieldnames or not all(col in reader.fieldnames for col in ["path", "type", "content"]):
                 print(f"Критическая ошибка: Неверный формат CSV в '{vfs_path}'. Требуются колонки path, type, content.",
                       file=sys.stderr)
                 sys.exit(1)
 
-            # Всегда инициализируем корневой каталог
+            # Корневой каталог
             VFS_DATA["/"] = {"type": "dir", "content": ""}
 
             for row in reader:
@@ -306,7 +294,7 @@ def load_vfs(vfs_path):
                 node_type = row["type"].strip()
                 content = row["content"]
 
-                # Нормализация путей (чтобы всегда начинались с / и не дублировали слэши)
+                # Пути через /
                 if not path.startswith("/"):
                     path = "/" + path
                 path = os.path.normpath(path).replace("\\", "/")
@@ -343,7 +331,6 @@ def execute_command(user_input):
         return "exit"
 
     elif command == "vfs-info":
-        # Вывод информации о загруженной VFS
         if args:
             print("vfs-info: команда не принимает аргументы", file=sys.stderr)
             return False
@@ -401,7 +388,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Отладочный вывод
     print("===== ОТЛАДОЧНЫЙ ВЫВОД ПАРАМЕТРОВ =====")
     print(f"Путь к VFS: {args.vfs}")
     print(f"Стартовый скрипт: {args.script if args.script else 'Не задан'}")
@@ -452,11 +438,10 @@ import csv
 import hashlib
 import base64
 
-# Глобальные переменные состояния VFS
 VFS_DATA = {}  # {абсолютный_путь: {'type': 'dir'/'file', 'content': 'base64_str'}}
 VFS_NAME = ""
 VFS_SHA256 = ""
-CURRENT_DIR = "/"  # Текущая директория в VFS
+CURRENT_DIR = "/"  
 
 
 def load_vfs(vfs_path):
@@ -501,7 +486,7 @@ def load_vfs(vfs_path):
 
                 VFS_DATA[path] = {"type": node_type, "content": content}
 
-                # Автоматически создаем родительские директории, если их забыли указать в CSV
+                # Создаем родительские директории, если их забыли указать в CSV
                 parts = path.split("/")
                 for i in range(1, len(parts)):
                     parent_path = "/".join(parts[:i + 1])
@@ -523,7 +508,6 @@ def get_prompt():
 
 
 def resolve_path(target_path):
-    """Преобразует относительный или абсолютный путь в нормализованный абсолютный путь VFS."""
     global CURRENT_DIR
     if target_path.startswith("/"):
         combined = target_path
@@ -540,7 +524,6 @@ def resolve_path(target_path):
 
 
 def execute_command(user_input):
-    """Обрабатывает и выполняет одну команду (Пункт 1, 2)."""
     global CURRENT_DIR
     parsed_input = shlex.split(user_input)
     if not parsed_input:
@@ -565,7 +548,7 @@ def execute_command(user_input):
         return True
 
     elif command == "ls":
-        # Логика реальной команды ls
+        # команда ls
         target = CURRENT_DIR
         if len(args) > 1:
             print("ls: слишком много аргументов", file=sys.stderr)
@@ -578,7 +561,6 @@ def execute_command(user_input):
             return False
 
         if VFS_DATA[target]["type"] == "file":
-            # Если это файл, выводим его же имя
             print(os.path.basename(target))
             return True
 
@@ -607,7 +589,7 @@ def execute_command(user_input):
         return True
 
     elif command == "cd":
-        # Логика реальной команды cd
+        # команда cd
         if len(args) > 1:
             print("cd: слишком много аргументов", file=sys.stderr)
             return False
@@ -625,7 +607,7 @@ def execute_command(user_input):
         return True
 
     elif command == "uname":
-        # Новая команда uname
+        # команда uname
         if len(args) > 1:
             print("uname: слишком много аргументов", file=sys.stderr)
             return False
@@ -643,7 +625,7 @@ def execute_command(user_input):
         return True
 
     elif command == "wc":
-        # Новая команда wc
+        # команда wc
         if not args:
             print("wc: пропущен операнд файла", file=sys.stderr)
             return False
@@ -659,7 +641,7 @@ def execute_command(user_input):
             print(f"wc: {args[0]}: Is a directory", file=sys.stderr)
             return False
 
-        # Декодируем содержимое файла из Base64
+        # Декодируем содержимое файла
         try:
             b64_content = VFS_DATA[target]["content"]
             raw_bytes = base64.b64decode(b64_content)
@@ -668,7 +650,6 @@ def execute_command(user_input):
             print(f"wc: ошибка чтения файла {args[0]}: {e}", file=sys.stderr)
             return False
 
-        # Считаем строки, слова, байты
         lines_count = text_content.count('\n')
         words_count = len(text_content.split())
         bytes_count = len(raw_bytes)
@@ -682,7 +663,6 @@ def execute_command(user_input):
 
 
 def run_script(script_path):
-    """Выполняет команды из стартового скрипта с имитацией ввода-вывода."""
     if not os.path.exists(script_path):
         print(f"Ошибка: Стартовый скрипт '{script_path}' не найден.", file=sys.stderr)
         return False
@@ -786,11 +766,10 @@ import csv
 import hashlib
 import base64
 
-# Глобальные переменные состояния VFS
 VFS_DATA = {}  # {абсолютный_путь: {'type': 'dir'/'file', 'permissions': '0755', 'content': 'base64_str'}}
 VFS_NAME = ""
 VFS_SHA256 = ""
-CURRENT_DIR = "/"  # Текущая директория в VFS
+CURRENT_DIR = "/"  
 
 
 def load_vfs(vfs_path):
@@ -820,7 +799,6 @@ def load_vfs(vfs_path):
                 print(f"Критическая ошибка: Неверный формат CSV в '{vfs_path}'.", file=sys.stderr)
                 sys.exit(1)
 
-            # Инициализируем корень с правами 0755
             VFS_DATA["/"] = {"type": "dir", "permissions": "0755", "content": ""}
 
             for row in reader:
@@ -834,12 +812,11 @@ def load_vfs(vfs_path):
                 if path != "/" and path.endswith("/"):
                     path = path.rstrip("/")
 
-                # Задаем базовые права: 0755 для папок, 0644 для файлов (Этап 5)
                 perms = "0755" if node_type == "dir" else "0644"
 
                 VFS_DATA[path] = {"type": node_type, "permissions": perms, "content": content}
 
-                # Автоматическое заполнение родительских директорий
+                # заполнение родительских директорий
                 parts = path.split("/")
                 for i in range(1, len(parts)):
                     parent_path = "/".join(parts[:i + 1])
@@ -854,7 +831,6 @@ def load_vfs(vfs_path):
 
 
 def get_prompt():
-    """Формирует приглашение к вводу."""
     username = getpass.getuser()
     hostname = socket.gethostname()
     return f"{username}@{hostname}:{CURRENT_DIR}$ "
@@ -878,7 +854,6 @@ def resolve_path(target_path):
 
 
 def execute_command(user_input):
-    """Обрабатывает и выполняет одну команду (Этап 1-5)."""
     global CURRENT_DIR, VFS_DATA
     parsed_input = shlex.split(user_input)
     if not parsed_input:
@@ -1004,7 +979,7 @@ def execute_command(user_input):
         return True
 
     elif command == "chmod":
-        # Новая команда chmod 
+        # команда chmod 
         if len(args) != 2:
             print("chmod: неверное количество аргументов. Использование: chmod <октальный_режим> <путь>",
                   file=sys.stderr)
@@ -1012,7 +987,7 @@ def execute_command(user_input):
 
         mode, target_raw = args[0], args[1]
 
-        # Проверяем, что маска состоит из 3-4 цифр в 8-ричной системе 
+         
         if not mode.isdigit() or any(c in mode for c in ['8', '9']) or len(mode) not in (3, 4):
             print(f"chmod: неверный режим доступа: '{mode}'", file=sys.stderr)
             return False
@@ -1022,14 +997,14 @@ def execute_command(user_input):
             print(f"chmod: {target_raw}: No such file or directory", file=sys.stderr)
             return False
 
-        # Нормализуем к 4-значному виду (например, 755 -> 0755)
+        # Нормализуем к 4-значному виду
         norm_mode = mode.zfill(4)
         VFS_DATA[target]["permissions"] = norm_mode
         print(f"[Успех] Права для '{target_raw}' изменены на {norm_mode}")
         return True
 
     elif command == "mv":
-        # Новая команда mv 
+        # команда mv 
         if len(args) != 2:
             print("mv: требуется указать источник и приемник. Использование: mv <источник> <приемник>", file=sys.stderr)
             return False
@@ -1046,13 +1021,10 @@ def execute_command(user_input):
             print("mv: невозможно переместить корневой каталог", file=sys.stderr)
             return False
 
-        # Проверяем, существует ли целевой путь и является ли он директорией
         if dest in VFS_DATA and VFS_DATA[dest]["type"] == "dir":
-            # Если dest — директория, файл перемещается внутрь неё со своим старым именем
             if dest in VFS_DATA and VFS_DATA[dest]["type"] == "dir":
                 dest = os.path.normpath(os.path.join(dest, os.path.basename(src))).replace("\\", "/")
 
-            # Предотвращаем перемещение папки саму в себя или в свои подпапки
             if src == dest or dest.startswith(src + "/"):
                 print(f"mv: невозможно переместить директорию '{src_raw}' в саму себя или в поддиректорию",
                       file=sys.stderr)
@@ -1067,7 +1039,7 @@ def execute_command(user_input):
                     sub_dest = os.path.normpath(path.replace(src, dest, 1)).replace("\\", "/")
                     to_move[path] = (sub_dest, node)
 
-            # Выполняем перемещение в памяти
+            # перемещение в памяти
             for old_path in to_move.keys():
                 del VFS_DATA[old_path]
 
@@ -1083,7 +1055,6 @@ def execute_command(user_input):
 
 
 def run_script(script_path):
-    """Выполняет команды из стартового скрипта с имитацией ввода-вывода."""
     if not os.path.exists(script_path):
         print(f"Ошибка: Стартовый скрипт '{script_path}' не найден.", file=sys.stderr)
         return False
@@ -1113,7 +1084,7 @@ def run_script(script_path):
     print("--- Стартовый скрипт успешно выполнен ---\n")
     return True
 
-    # ПЕРЕД DEF НЕТ ПРОБЕЛОВ - функция находится на верхнем уровне
+    # Если перед DEF нет пробелов - функция находится на верхнем уровне
 
 
 def main():
